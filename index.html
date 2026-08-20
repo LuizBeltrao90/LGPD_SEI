@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANAC – Proteção de Dados Pessoais | Painel SEI</title>
+    <!-- Bibliotecas de leitura de Excel e Gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-color: #003366;
+            --secondary-color: #0055a5;
+            --accent-color: #e67e22;
+            --bg-color: #f4f7f9;
+            --card-bg: #ffffff;
+            --text-color: #2c3e50;
+            --border-color: #e1e8ed;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 25px 20px;
+            text-align: center;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        header p {
+            margin: 8px 0 0 0;
+            font-size: 15px;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        #loading {
+            text-align: center;
+            padding: 50px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            font-size: 18px;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border-color);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            border-bottom: 2px solid var(--bg-color);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .card-header h2 {
+            margin: 0;
+            font-size: 20px;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .card-description {
+            font-size: 14px;
+            color: #666;
+            margin-top: -10px;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: white;
+            color: var(--text-color);
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 13px;
+            color: #888;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>ANAC – PROTEÇÃO DE DADOS PESSOAIS</h1>
+        <p>CONFORMIDADE LGPD DA BASE SEI — Painel de Controle</p>
+    </header>
+
+    <div class="container">
+        <div id="loading">
+            Carregando planilhas de controle e consolidando dados... Aguarde um momento.
+        </div>
+
+        <div id="dashboard" style="display: none;">
+
+            <!-- GRÁFICO 1: EVOLUÇÃO GERAL -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Total Geral de Ocorrências</h2>
+                    <div class="controls">
+                        <label for="filtroPeriodoGeral">Período:</label>
+                        <select id="filtroPeriodoGeral" onchange="atualizarGraficoGeral()"></select>
+                    </div>
+                </div>
+                <div class="card-description">
+                    Evolução dos dados gerais das ocorrências, consolidando os valores semanais da planilha de controle.
+                </div>
+                <div class="chart-container">
+                    <canvas id="chartGeral"></canvas>
+                </div>
+            </div>
+
+            <!-- GRÁFICO 2: EVOLUÇÃO POR UORG -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Total de Ocorrências por UORG</h2>
+                </div>
+                <div class="card-description">
+                    Evolução dos dados gerais das ocorrências por UORGs, consolidando os valores semanais da planilha de controle. Exibe as UORGs que mais geram ocorrências LGPD no SEI.
+                </div>
+                <div class="chart-container">
+                    <canvas id="chartUorg"></canvas>
+                </div>
+            </div>
+
+            <!-- GRÁFICO 3: OCORRÊNCIAS POR DEPARTAMENTO -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Ocorrências por Departamento e UORG</h2>
+                    <div class="controls">
+                        <label for="selectUorgFiltro">UORG:</label>
+                        <select id="selectUorgFiltro" onchange="atualizarGraficoDepto()"></select>
+                    </div>
+                </div>
+                <div class="card-description">
+                    Dados em ordem crescente (da esquerda para a direita) referentes à UORG selecionada. Cada barra informa o total de ocorrências daquele departamento no período acumulado.
+                </div>
+                <div class="chart-container">
+                    <canvas id="chartDepto"></canvas>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <footer>
+        Agência Nacional de Aviação Civil (ANAC) — Painel de Governança de Proteção de Dados Pessoais
+    </footer>
+
+    <script>
+        let dadosGlobais = [];
+        let semanasGlobais = [];
+        let uorgsGlobais = [];
+        let chartGeralInstance = null;
+        let chartUorgInstance = null;
+        let chartDeptoInstance = null;
+
+        const paletaCores = [
+            '#003366', '#e67e22', '#27ae60', '#8e44ad', '#c0392b',
+            '#16a085', '#f39c12', '#2980b9', '#d35400', '#2c3e50',
+            '#7f8c8d', '#bdc3c7'
+        ];
+
+        async function carregarDados() {
+            try {
+                // Carrega diretamente os arquivos renomeados
+                const respOcc = await fetch('ocorrencias.xlsx');
+                const respUorg = await fetch('uorgs.xlsx');
+
+                if (!respOcc.ok || !respUorg.ok) {
+                    throw new Error("Erro de HTTP ao carregar os arquivos. Status: " + respOcc.status + " / " + respUorg.status);
+                }
+
+                const arrayUorg = await respUorg.arrayBuffer();
+                const wbUorg = XLSX.read(arrayUorg, { type: 'array' });
+                
+                // Mapeamento UORG -> Depto
+                const sheetUorgName = wbUorg.SheetNames.includes('Lista de UORGs e Departamen (2)') 
+                                      ? 'Lista de UORGs e Departamen (2)' 
+                                      : wbUorg.SheetNames[0];
+                const sheetUorg = wbUorg.Sheets[sheetUorgName];
+                const rawUorgMap = XLSX.utils.sheet_to_json(sheetUorg, { header: 1 });
+
+                const mapaUorg = {};
+                for (let i = 1; i < rawUorgMap.length; i++) {
+                    const row = rawUorgMap[i];
+                    if (row && row[2] !== undefined) {
+                        const codDept = parseInt(row[2]);
+                        const nomeUorg = row[0] ? String(row[0]).trim() : 'OUTROS';
+                        if (!isNaN(codDept)) {
+                            mapaUorg[codDept] = nomeUorg;
+                        }
+                    }
+                }
+
+                // Carrega ocorrências semanais
+                const arrayOcc = await respOcc.arrayBuffer();
+                const wbOcc = XLSX.read(arrayOcc, { type: 'array' });
+
+                semanasGlobais = wbOcc.SheetNames;
+                dadosGlobais = [];
+
+                semanasGlobais.forEach(semana => {
+                    const sheet = wbOcc.Sheets[semana];
+                    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+                    let startIdx = -1;
+                    for (let r = 0; r < rows.length; r++) {
+                        if (rows[r] && (rows[r][0] === 'Código' || rows[r][1] === 'Unidade')) {
+                            startIdx = r + 1;
+                            break;
+                        }
+                    }
+
+                    if (startIdx !== -1) {
+                        for (let r = startIdx; r < rows.length; r++) {
+                            const row = rows[r];
+                            if (row && row[0] !== undefined) {
+                                const cod = parseInt(row[0]);
+                                const unidade = String(row[1] || '').trim();
+                                const qtd = parseInt(row[2]) || 0;
+                                const uorg = mapaUorg[cod] || 'OUTROS';
+
+                                if (!isNaN(cod) && unidade !== '') {
+                                    dadosGlobais.push({
+                                        Semana: semana,
+                                        Codigo: cod,
+                                        Unidade: unidade,
+                                        Quantidade: qtd,
+                                        UORG: uorg
+                                    });
+                                }
+                            }
+                        }
+                    }
+                });
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+
+                inicializarFiltros();
+                renderizarTodosGraficos();
+
+            } catch (err) {
+                document.getElementById('loading').innerHTML = 
+                    '<span style="color: #c0392b;">Erro ao carregar e processar as planilhas do Excel.<br>Verifique se os arquivos <b>ocorrencias.xlsx</b> e <b>uorgs.xlsx</b> estão na raiz do repositório no GitHub.</span>';
+                console.error(err);
+            }
+        }
+
+        function inicializarFiltros() {
+            const selectPeriodo = document.getElementById('filtroPeriodoGeral');
+            selectPeriodo.innerHTML = '<option value="TODOS">Todo o Período</option>';
+            semanasGlobais.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s;
+                opt.textContent = s;
+                selectPeriodo.appendChild(opt);
+            });
+
+            uorgsGlobais = [...new Set(dadosGlobais.map(d => d.UORG))].sort();
+            const selectUorg = document.getElementById('selectUorgFiltro');
+            selectUorg.innerHTML = '';
+            uorgsGlobais.forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u;
+                opt.textContent = u;
+                selectUorg.appendChild(opt);
+            });
+        }
+
+        function renderizarTodosGraficos() {
+            atualizarGraficoGeral();
+            renderizarGraficoUorg();
+            atualizarGraficoDepto();
+        }
+
+        // 1. Gráfico Geral
+        function atualizarGraficoGeral() {
+            const filtro = document.getElementById('filtroPeriodoGeral').value;
+            let semanasFiltradas = semanasGlobais;
+
+            if (filtro !== 'TODOS') {
+                semanasFiltradas = [filtro];
+            }
+
+            const totalPorSemana = semanasFiltradas.map(s => {
+                return dadosGlobais.filter(d => d.Semana === s).reduce((acc, c) => acc + c.Quantidade, 0);
+            });
+
+            if (chartGeralInstance) chartGeralInstance.destroy();
+
+            chartGeralInstance = new Chart(document.getElementById('chartGeral'), {
+                type: 'line',
+                data: {
+                    labels: semanasFiltradas,
+                    datasets: [{
+                        label: 'Total de Ocorrências',
+                        data: totalPorSemana,
+                        borderColor: '#003366',
+                        backgroundColor: 'rgba(0, 51, 102, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        pointBackgroundColor: '#003366'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'top' } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // 2. Gráfico por UORG
+        function renderizarGraficoUorg() {
+            const datasetsUorg = uorgsGlobais.map((uorg, idx) => {
+                return {
+                    label: uorg,
+                    data: semanasGlobais.map(s => {
+                        return dadosGlobais.filter(d => d.Semana === s && d.UORG === uorg)
+                                           .reduce((acc, c) => acc + c.Quantidade, 0);
+                    }),
+                    borderColor: paletaCores[idx % paletaCores.length],
+                    backgroundColor: paletaCores[idx % paletaCores.length],
+                    fill: false,
+                    tension: 0.2,
+                    borderWidth: 2,
+                    pointRadius: 4
+                };
+            });
+
+            if (chartUorgInstance) chartUorgInstance.destroy();
+
+            chartUorgInstance = new Chart(document.getElementById('chartUorg'), {
+                type: 'line',
+                data: { labels: semanasGlobais, datasets: datasetsUorg },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            display: true, 
+                            position: 'top',
+                            onClick: (e, legendItem) => {
+                                const uorgNome = legendItem.text;
+                                document.getElementById('selectUorgFiltro').value = uorgNome;
+                                atualizarGraficoDepto();
+                            }
+                        }
+                    },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // 3. Gráfico por Departamento (Ordem Crescente)
+        function atualizarGraficoDepto() {
+            const uorgSel = document.getElementById('selectUorgFiltro').value;
+            const dadosUorg = dadosGlobais.filter(d => d.UORG === uorgSel);
+
+            const totaisPorDepto = {};
+            dadosUorg.forEach(d => {
+                totaisPorDepto[d.Unidade] = (totaisPorDepto[d.Unidade] || 0) + d.Quantidade;
+            });
+
+            // Ordena em Ordem Crescente (da esquerda para a direita)
+            const deptosOrdenados = Object.keys(totaisPorDepto).sort((a, b) => totaisPorDepto[a] - totaisPorDepto[b]);
+            const valoresOrdenados = deptosOrdenados.map(d => totaisPorDepto[d]);
+
+            if (chartDeptoInstance) chartDeptoInstance.destroy();
+
+            chartDeptoInstance = new Chart(document.getElementById('chartDepto'), {
+                type: 'bar',
+                data: {
+                    labels: deptosOrdenados,
+                    datasets: [{
+                        label: `Total de Ocorrências no Período - ${uorgSel}`,
+                        data: valoresOrdenados,
+                        backgroundColor: '#003366',
+                        borderColor: '#002244',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'top' } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        window.onload = carregarDados;
+    </script>
+</body>
+</html>
