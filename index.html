@@ -177,20 +177,18 @@
                         <span id="badgeTotalGeral" class="total-badge">Total Consolidado: 0</span>
                     </div>
                     <div class="controls">
-                        <label for="selectVisaoTemporal">Visão:</label>
-                        <select id="selectVisaoTemporal" onchange="mudarVisaoTemporal()">
-                            <option value="SEMANAL">Semanal</option>
-                            <option value="MENSAL">Mensal</option>
-                            <option value="TRIMESTRAL">Trimestral</option>
-                            <option value="ANUAL">Anual</option>
+                        <label for="selectJanelaTemporal">Janela Temporal:</label>
+                        <select id="selectJanelaTemporal" onchange="atualizarPainelPorFiltro()">
+                            <option value="TODOS">Todo o Período</option>
+                            <option value="4">Últimas 4 Semanas</option>
+                            <option value="8">Últimas 8 Semanas</option>
+                            <option value="26">Últimas 26 Semanas</option>
+                            <option value="52">Últimas 52 Semanas</option>
                         </select>
-
-                        <label for="filtroPeriodoGeral">Período:</label>
-                        <select id="filtroPeriodoGeral" onchange="atualizarPainelPorFiltro()"></select>
                     </div>
                 </div>
                 <div class="card-description">
-                    Evolução dos dados gerais das ocorrências na visão temporal selecionada.
+                    Evolução do total de ocorrências acumuladas na janela temporal selecionada.
                 </div>
                 <div class="chart-container">
                     <canvas id="chartGeral"></canvas>
@@ -203,7 +201,7 @@
                     <h2>Total de Ocorrências por UORG</h2>
                 </div>
                 <div class="card-description">
-                    Distribuição das ocorrências por UORGs. Exibe quais UORGs possuem maior volume de adequação LGPD no SEI.
+                    Distribuição das ocorrências por UORGs na mesma janela temporal. Exibe quais UORGs possuem maior volume de adequação LGPD no SEI.
                 </div>
                 <div class="chart-container">
                     <canvas id="chartUorg"></canvas>
@@ -220,7 +218,7 @@
                     </div>
                 </div>
                 <div class="card-description">
-                    Dados em ordem crescente (da esquerda para a direita) referentes à UORG selecionada no período acumulado.
+                    Dados em ordem crescente (da esquerda para a direita) referentes à UORG selecionada na janela temporal ativa.
                 </div>
                 <div class="chart-container">
                     <canvas id="chartDepto"></canvas>
@@ -238,9 +236,7 @@
         let dadosBase = [];
         let mapaUorg = {};
         let uorgsGlobais = [];
-        
-        let periodosDisponiveis = [];
-        let dadosAgrupados = [];
+        let semanasOrdenadas = [];
 
         let chartGeralInstance = null;
         let chartUorgInstance = null;
@@ -289,9 +285,10 @@
                 const arrayOcc = await respOcc.arrayBuffer();
                 const wbOcc = XLSX.read(arrayOcc, { type: 'array' });
 
+                semanasOrdenadas = wbOcc.SheetNames;
                 dadosBase = [];
 
-                wbOcc.SheetNames.forEach(semana => {
+                semanasOrdenadas.forEach(semana => {
                     const sheet = wbOcc.Sheets[semana];
                     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
@@ -331,7 +328,7 @@
 
                                 if (unidade !== '' && !unidade.toLowerCase().includes('total')) {
                                     dadosBase.push({
-                                        AbaOriginal: semana,
+                                        Semana: semana,
                                         Unidade: unidade,
                                         Quantidade: qtd,
                                         UORG: uorg
@@ -356,7 +353,7 @@
                     selectUorg.appendChild(opt);
                 });
 
-                mudarVisaoTemporal();
+                atualizarPainelPorFiltro();
 
             } catch (err) {
                 document.getElementById('loading').innerHTML = 
@@ -365,80 +362,33 @@
             }
         }
 
-        // Mapeia o nome das abas para os agrupamentos (Semanal, Mensal, Trimestral, Anual)
-        function classificarPeriodo(abaName, visao) {
-            if (visao === 'SEMANAL') return abaName;
-            
-            const abaLow = abaName.toLowerCase();
-            if (abaLow.includes('06') || abaLow.includes('.06')) {
-                return visao === 'MENSAL' ? 'Junho' : (visao === 'TRIMESTRAL' ? '2º Trimestre' : '2024');
+        function obterSemanasFiltradas() {
+            const janelaVal = document.getElementById('selectJanelaTemporal').value;
+            if (janelaVal === 'TODOS') {
+                return semanasOrdenadas;
             }
-            if (abaLow.includes('07') || abaLow.includes('.07')) {
-                return visao === 'MENSAL' ? 'Julho' : (visao === 'TRIMESTRAL' ? '3º Trimestre' : '2024');
-            }
-            if (abaLow.includes('08') || abaLow.includes('.08')) {
-                return visao === 'MENSAL' ? 'Agosto' : (visao === 'TRIMESTRAL' ? '3º Trimestre' : '2024');
-            }
-            
-            return 'Outros';
-        }
-
-        function mudarVisaoTemporal() {
-            const visao = document.getElementById('selectVisaoTemporal').value;
-            
-            dadosAgrupados = dadosBase.map(d => {
-                return {
-                    ...d,
-                    Periodo: classificarPeriodo(d.AbaOriginal, visao)
-                };
-            });
-
-            periodosDisponiveis = [];
-            dadosAgrupados.forEach(d => {
-                if (!periodosDisponiveis.includes(d.Periodo)) {
-                    periodosDisponiveis.push(d.Periodo);
-                }
-            });
-
-            const selectPeriodo = document.getElementById('filtroPeriodoGeral');
-            selectPeriodo.innerHTML = '<option value="TODOS">Todo o Período</option>';
-            periodosDisponiveis.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p;
-                opt.textContent = p;
-                selectPeriodo.appendChild(opt);
-            });
-
-            atualizarPainelPorFiltro();
+            const numSemanas = parseInt(janelaVal);
+            return semanasOrdenadas.slice(-numSemanas);
         }
 
         function atualizarPainelPorFiltro() {
-            const periodoSel = document.getElementById('filtroPeriodoGeral').value;
+            const semanasAtivas = obterSemanasFiltradas();
+            const dadosFiltrados = dadosBase.filter(d => semanasAtivas.includes(d.Semana));
             
-            // 1. Calcula o Total Consolidado exibido ao lado do título do Gráfico 1
-            let dadosFiltrados = dadosAgrupados;
-            if (periodoSel !== 'TODOS') {
-                dadosFiltrados = dadosAgrupados.filter(d => d.Periodo === periodoSel);
-            }
-            
+            // 1. Badge com Total Consolidado
             const totalConsolidado = dadosFiltrados.reduce((acc, c) => acc + c.Quantidade, 0);
             document.getElementById('badgeTotalGeral').textContent = `Total Consolidado: ${totalConsolidado.toLocaleString('pt-BR')}`;
 
             // 2. Atualiza todos os gráficos
-            atualizarGraficoGeral(periodoSel);
-            renderizarGraficoUorg(periodoSel);
+            atualizarGraficoGeral(semanasAtivas, dadosFiltrados);
+            renderizarGraficoUorg(semanasAtivas, dadosFiltrados);
             atualizarGraficoDepto();
         }
 
-        // 1. Gráfico Geral (Corrigido para exibir corretamente o ponto único quando 1 período/semana é selecionado)
-        function atualizarGraficoGeral(periodoSel) {
-            let labels = periodosDisponiveis;
-            if (periodoSel !== 'TODOS') {
-                labels = [periodoSel];
-            }
-
-            const totalPorPeriodo = labels.map(p => {
-                return dadosAgrupados.filter(d => d.Periodo === p).reduce((acc, c) => acc + c.Quantidade, 0);
+        // 1. Gráfico Geral
+        function atualizarGraficoGeral(semanasAtivas, dadosFiltrados) {
+            const totalPorSemana = semanasAtivas.map(s => {
+                return dadosFiltrados.filter(d => d.Semana === s).reduce((acc, c) => acc + c.Quantidade, 0);
             });
 
             if (chartGeralInstance) chartGeralInstance.destroy();
@@ -446,16 +396,16 @@
             chartGeralInstance = new Chart(document.getElementById('chartGeral'), {
                 type: 'line',
                 data: {
-                    labels: labels,
+                    labels: semanasAtivas,
                     datasets: [{
-                        label: periodoSel === 'TODOS' ? 'Evolução do Total de Ocorrências' : `Total de Ocorrências - ${periodoSel}`,
-                        data: totalPorPeriodo,
+                        label: 'Evolução do Total de Ocorrências',
+                        data: totalPorSemana,
                         borderColor: '#003366',
                         backgroundColor: 'rgba(0, 51, 102, 0.15)',
                         fill: true,
                         tension: 0.3,
-                        pointRadius: 7,
-                        pointHoverRadius: 9,
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
                         pointBackgroundColor: '#003366'
                     }]
                 },
@@ -469,21 +419,13 @@
         }
 
         // 2. Gráfico por UORG em Barras + Legenda na Parte Inferior
-        function renderizarGraficoUorg(periodoSel) {
-            let labels = periodosDisponiveis;
-            let dadosParaGrafico = dadosAgrupados;
-
-            if (periodoSel !== 'TODOS') {
-                labels = [periodoSel];
-                dadosParaGrafico = dadosAgrupados.filter(d => d.Periodo === periodoSel);
-            }
-
+        function renderizarGraficoUorg(semanasAtivas, dadosFiltrados) {
             const datasetsUorg = uorgsGlobais.map((uorg, idx) => {
                 return {
                     label: uorg,
-                    data: labels.map(p => {
-                        return dadosParaGrafico.filter(d => d.Periodo === p && d.UORG === uorg)
-                                               .reduce((acc, c) => acc + c.Quantidade, 0);
+                    data: semanasAtivas.map(s => {
+                        return dadosFiltrados.filter(d => d.Semana === s && d.UORG === uorg)
+                                             .reduce((acc, c) => acc + c.Quantidade, 0);
                     }),
                     backgroundColor: paletaCores[idx % paletaCores.length],
                     borderColor: paletaCores[idx % paletaCores.length],
@@ -495,7 +437,7 @@
 
             chartUorgInstance = new Chart(document.getElementById('chartUorg'), {
                 type: 'bar',
-                data: { labels: labels, datasets: datasetsUorg },
+                data: { labels: semanasAtivas, datasets: datasetsUorg },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -522,15 +464,12 @@
         // 3. Gráfico por Departamento (Ordem Crescente)
         function atualizarGraficoDepto() {
             const uorgSel = document.getElementById('selectUorgFiltro').value;
-            const periodoSel = document.getElementById('filtroPeriodoGeral').value;
+            const semanasAtivas = obterSemanasFiltradas();
 
-            let dadosFiltrados = dadosAgrupados.filter(d => d.UORG === uorgSel);
-            if (periodoSel !== 'TODOS') {
-                dadosFiltrados = dadosFiltrados.filter(d => d.Periodo === periodoSel);
-            }
+            const dadosUorg = dadosBase.filter(d => d.UORG === uorgSel && semanasAtivas.includes(d.Semana));
 
             const totaisPorDepto = {};
-            dadosFiltrados.forEach(d => {
+            dadosUorg.forEach(d => {
                 totaisPorDepto[d.Unidade] = (totaisPorDepto[d.Unidade] || 0) + d.Quantidade;
             });
 
@@ -544,7 +483,7 @@
                 data: {
                     labels: deptosOrdenados,
                     datasets: [{
-                        label: `Ocorrências - ${uorgSel} (${periodoSel})`,
+                        label: `Ocorrências - ${uorgSel}`,
                         data: valoresOrdenados,
                         backgroundColor: '#003366',
                         borderColor: '#002244',
