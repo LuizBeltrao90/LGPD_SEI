@@ -222,37 +222,41 @@
 
         async function carregarDados() {
             try {
-                // Carrega diretamente os arquivos renomeados
                 const respOcc = await fetch('ocorrencias.xlsx');
                 const respUorg = await fetch('uorgs.xlsx');
 
                 if (!respOcc.ok || !respUorg.ok) {
-                    throw new Error("Erro de HTTP ao carregar os arquivos. Status: " + respOcc.status + " / " + respUorg.status);
+                    throw new Error("Erro de HTTP ao carregar os arquivos Excel.");
                 }
 
+                // 1. Processa Mapeamento de UORGs
                 const arrayUorg = await respUorg.arrayBuffer();
                 const wbUorg = XLSX.read(arrayUorg, { type: 'array' });
                 
-                // Mapeamento UORG -> Depto
-                const sheetUorgName = wbUorg.SheetNames.includes('Lista de UORGs e Departamen (2)') 
-                                      ? 'Lista de UORGs e Departamen (2)' 
-                                      : wbUorg.SheetNames[0];
-                const sheetUorg = wbUorg.Sheets[sheetUorgName];
-                const rawUorgMap = XLSX.utils.sheet_to_json(sheetUorg, { header: 1 });
-
                 const mapaUorg = {};
-                for (let i = 1; i < rawUorgMap.length; i++) {
-                    const row = rawUorgMap[i];
-                    if (row && row[2] !== undefined) {
-                        const codDept = parseInt(row[2]);
-                        const nomeUorg = row[0] ? String(row[0]).trim() : 'OUTROS';
-                        if (!isNaN(codDept)) {
-                            mapaUorg[codDept] = nomeUorg;
+                
+                // Mapeia por Código/Nome de Departamento das abas disponíveis
+                wbUorg.SheetNames.forEach(sheetName => {
+                    const sheet = wbUorg.Sheets[sheetName];
+                    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    
+                    rows.forEach((row, idx) => {
+                        if (idx > 0 && row && row.length >= 2) {
+                            const uorgNome = String(row[0] || '').trim();
+                            const deptoNome = String(row[1] || row[3] || '').trim();
+                            const codDept = row[2] !== undefined ? parseInt(row[2]) : null;
+                            
+                            if (deptoNome && uorgNome && uorgNome !== 'UORG') {
+                                mapaUorg[deptoNome.toUpperCase()] = uorgNome;
+                            }
+                            if (codDept !== null && !isNaN(codDept) && uorgNome) {
+                                mapaUorg[codDept] = uorgNome;
+                            }
                         }
-                    }
-                }
+                    });
+                });
 
-                // Carrega ocorrências semanais
+                // 2. Processa Ocorrências Semanas
                 const arrayOcc = await respOcc.arrayBuffer();
                 const wbOcc = XLSX.read(arrayOcc, { type: 'array' });
 
@@ -263,27 +267,45 @@
                     const sheet = wbOcc.Sheets[semana];
                     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
+                    // Identifica linha do cabeçalho ("Unidade" e "Quantidade")
+                    let colUnidadeIdx = -1;
+                    let colQtdIdx = -1;
                     let startIdx = -1;
+
                     for (let r = 0; r < rows.length; r++) {
-                        if (rows[r] && (rows[r][0] === 'Código' || rows[r][1] === 'Unidade')) {
-                            startIdx = r + 1;
-                            break;
+                        const row = rows[r];
+                        if (row) {
+                            for (let c = 0; c < row.length; c++) {
+                                const val = String(row[c] || '').trim().toLowerCase();
+                                if (val === 'unidade') colUnidadeIdx = c;
+                                if (val === 'quantidade') colQtdIdx = c;
+                            }
+                            if (colUnidadeIdx !== -1 && colQtdIdx !== -1) {
+                                startIdx = r + 1;
+                                break;
+                            }
                         }
                     }
 
                     if (startIdx !== -1) {
                         for (let r = startIdx; r < rows.length; r++) {
                             const row = rows[r];
-                            if (row && row[0] !== undefined) {
-                                const cod = parseInt(row[0]);
-                                const unidade = String(row[1] || '').trim();
-                                const qtd = parseInt(row[2]) || 0;
-                                const uorg = mapaUorg[cod] || 'OUTROS';
+                            if (row && row[colUnidadeIdx] !== undefined) {
+                                const unidade = String(row[colUnidadeIdx] || '').trim();
+                                const qtd = parseInt(row[colQtdIdx]) || 0;
+                                const cod = !isNaN(parseInt(row[0])) ? parseInt(row[0]) : null;
 
-                                if (!isNaN(cod) && unidade !== '') {
+                                // Identifica a UORG correspondente pela Sigla ou Código
+                                let uorg = 'OUTROS';
+                                if (mapaUorg[unidade.toUpperCase()]) {
+                                    uorg = mapaUorg[unidade.toUpperCase()];
+                                } else if (cod !== null && mapaUorg[cod]) {
+                                    uorg = mapaUorg[cod];
+                                }
+
+                                if (unidade !== '' && !unidade.toLowerCase().includes('total')) {
                                     dadosGlobais.push({
                                         Semana: semana,
-                                        Codigo: cod,
                                         Unidade: unidade,
                                         Quantidade: qtd,
                                         UORG: uorg
@@ -426,7 +448,6 @@
                 totaisPorDepto[d.Unidade] = (totaisPorDepto[d.Unidade] || 0) + d.Quantidade;
             });
 
-            // Ordena em Ordem Crescente (da esquerda para a direita)
             const deptosOrdenados = Object.keys(totaisPorDepto).sort((a, b) => totaisPorDepto[a] - totaisPorDepto[b]);
             const valoresOrdenados = deptosOrdenados.map(d => totaisPorDepto[d]);
 
