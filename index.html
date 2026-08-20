@@ -99,13 +99,13 @@
         }
 
         .total-badge {
-            background-color: #eef4fc;
-            color: var(--primary-color);
-            border: 1px solid #b8d5f3;
-            padding: 4px 12px;
+            background-color: #003366;
+            color: white;
+            padding: 6px 14px;
             border-radius: 20px;
             font-size: 14px;
             font-weight: 700;
+            letter-spacing: 0.5px;
         }
 
         .card-description {
@@ -174,7 +174,7 @@
                 <div class="card-header">
                     <div class="header-title-group">
                         <h2>Total Geral de Ocorrências</h2>
-                        <span id="badgeTotalGeral" class="total-badge">Total: 0</span>
+                        <span id="badgeTotalGeral" class="total-badge">Total Consolidado: 0</span>
                     </div>
                     <div class="controls">
                         <label for="selectVisaoTemporal">Visão:</label>
@@ -239,7 +239,6 @@
         let mapaUorg = {};
         let uorgsGlobais = [];
         
-        // Estruturas processadas por agrupamento
         let periodosDisponiveis = [];
         let dadosAgrupados = [];
 
@@ -348,7 +347,6 @@
 
                 uorgsGlobais = [...new Set(dadosBase.map(d => d.UORG))].sort();
                 
-                // Popula UORGs no filtro do Gráfico 3
                 const selectUorg = document.getElementById('selectUorgFiltro');
                 selectUorg.innerHTML = '';
                 uorgsGlobais.forEach(u => {
@@ -367,14 +365,20 @@
             }
         }
 
-        // Mapeia abas para Períodos (Semanal, Mensal, Trimestral, Anual)
+        // Mapeia o nome das abas para os agrupamentos (Semanal, Mensal, Trimestral, Anual)
         function classificarPeriodo(abaName, visao) {
             if (visao === 'SEMANAL') return abaName;
             
-            // Lógica por mês conforme as datas das abas
-            if (abaName.includes('.06')) return visao === 'MENSAL' ? 'Junho' : (visao === 'TRIMESTRAL' ? '2º Trimestre' : '2024');
-            if (abaName.includes('.07')) return visao === 'MENSAL' ? 'Julho' : (visao === 'TRIMESTRAL' ? '3º Trimestre' : '2024');
-            if (abaName.includes('.08')) return visao === 'MENSAL' ? 'Agosto' : (visao === 'TRIMESTRAL' ? '3º Trimestre' : '2024');
+            const abaLow = abaName.toLowerCase();
+            if (abaLow.includes('06') || abaLow.includes('.06')) {
+                return visao === 'MENSAL' ? 'Junho' : (visao === 'TRIMESTRAL' ? '2º Trimestre' : '2024');
+            }
+            if (abaLow.includes('07') || abaLow.includes('.07')) {
+                return visao === 'MENSAL' ? 'Julho' : (visao === 'TRIMESTRAL' ? '3º Trimestre' : '2024');
+            }
+            if (abaLow.includes('08') || abaLow.includes('.08')) {
+                return visao === 'MENSAL' ? 'Agosto' : (visao === 'TRIMESTRAL' ? '3º Trimestre' : '2024');
+            }
             
             return 'Outros';
         }
@@ -382,7 +386,6 @@
         function mudarVisaoTemporal() {
             const visao = document.getElementById('selectVisaoTemporal').value;
             
-            // Agrupa os dados base de acordo com a visão selecionada
             dadosAgrupados = dadosBase.map(d => {
                 return {
                     ...d,
@@ -390,7 +393,6 @@
                 };
             });
 
-            // Preserva a ordem original dos períodos únicos
             periodosDisponiveis = [];
             dadosAgrupados.forEach(d => {
                 if (!periodosDisponiveis.includes(d.Periodo)) {
@@ -398,7 +400,6 @@
                 }
             });
 
-            // Popula o select de Períodos
             const selectPeriodo = document.getElementById('filtroPeriodoGeral');
             selectPeriodo.innerHTML = '<option value="TODOS">Todo o Período</option>';
             periodosDisponiveis.forEach(p => {
@@ -414,22 +415,22 @@
         function atualizarPainelPorFiltro() {
             const periodoSel = document.getElementById('filtroPeriodoGeral').value;
             
-            // 1. Calcula e exibe o Total Consolidado no Card ao lado do título
+            // 1. Calcula o Total Consolidado exibido ao lado do título do Gráfico 1
             let dadosFiltrados = dadosAgrupados;
             if (periodoSel !== 'TODOS') {
                 dadosFiltrados = dadosAgrupados.filter(d => d.Periodo === periodoSel);
             }
             
             const totalConsolidado = dadosFiltrados.reduce((acc, c) => acc + c.Quantidade, 0);
-            document.getElementById('badgeTotalGeral').textContent = `Total: ${totalConsolidado.toLocaleString('pt-BR')}`;
+            document.getElementById('badgeTotalGeral').textContent = `Total Consolidado: ${totalConsolidado.toLocaleString('pt-BR')}`;
 
-            // 2. Atualiza Gráficos
+            // 2. Atualiza todos os gráficos
             atualizarGraficoGeral(periodoSel);
             renderizarGraficoUorg(periodoSel);
             atualizarGraficoDepto();
         }
 
-        // 1. Gráfico Geral
+        // 1. Gráfico Geral (Corrigido para exibir corretamente o ponto único quando 1 período/semana é selecionado)
         function atualizarGraficoGeral(periodoSel) {
             let labels = periodosDisponiveis;
             if (periodoSel !== 'TODOS') {
@@ -447,14 +448,14 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Total de Ocorrências',
+                        label: periodoSel === 'TODOS' ? 'Evolução do Total de Ocorrências' : `Total de Ocorrências - ${periodoSel}`,
                         data: totalPorPeriodo,
                         borderColor: '#003366',
-                        backgroundColor: 'rgba(0, 51, 102, 0.1)',
+                        backgroundColor: 'rgba(0, 51, 102, 0.15)',
                         fill: true,
                         tension: 0.3,
-                        pointRadius: labels.length === 1 ? 8 : 5,
-                        pointHoverRadius: 8,
+                        pointRadius: 7,
+                        pointHoverRadius: 9,
                         pointBackgroundColor: '#003366'
                     }]
                 },
@@ -467,7 +468,7 @@
             });
         }
 
-        // 2. Gráfico por UORG (Convertido para Barras e com legenda na parte inferior)
+        // 2. Gráfico por UORG em Barras + Legenda na Parte Inferior
         function renderizarGraficoUorg(periodoSel) {
             let labels = periodosDisponiveis;
             let dadosParaGrafico = dadosAgrupados;
@@ -501,7 +502,7 @@
                     plugins: {
                         legend: { 
                             display: true, 
-                            position: 'bottom', // Legenda movida para a parte inferior
+                            position: 'bottom',
                             labels: { boxWidth: 12, padding: 15 },
                             onClick: (e, legendItem) => {
                                 const uorgNome = legendItem.text;
@@ -533,7 +534,6 @@
                 totaisPorDepto[d.Unidade] = (totaisPorDepto[d.Unidade] || 0) + d.Quantidade;
             });
 
-            // Ordena em Ordem Crescente (da esquerda para a direita)
             const deptosOrdenados = Object.keys(totaisPorDepto).sort((a, b) => totaisPorDepto[a] - totaisPorDepto[b]);
             const valoresOrdenados = deptosOrdenados.map(d => totaisPorDepto[d]);
 
