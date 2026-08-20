@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ANAC – Proteção de Dados Pessoais | Painel SEI</title>
-    <!-- Bibliotecas de leitura de Excel e Gráficos -->
+    <!-- Bibliotecas: Excel, Chart.js e Plugin de Rótulos de Dados (DataLabels) -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <style>
         :root {
             --primary-color: #003366;
@@ -85,27 +86,11 @@
             margin-bottom: 20px;
         }
 
-        .header-title-group {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
         .card-header h2 {
             margin: 0;
             font-size: 20px;
             color: var(--primary-color);
             font-weight: 600;
-        }
-
-        .total-badge {
-            background-color: #003366;
-            color: white;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: 0.5px;
         }
 
         .card-description {
@@ -172,10 +157,7 @@
             <!-- GRÁFICO 1: EVOLUÇÃO GERAL -->
             <div class="card">
                 <div class="card-header">
-                    <div class="header-title-group">
-                        <h2>Total Geral de Ocorrências</h2>
-                        <span id="badgeTotalGeral" class="total-badge">Total Consolidado: 0</span>
-                    </div>
+                    <h2>Total Geral de Ocorrências</h2>
                     <div class="controls">
                         <label for="selectJanelaTemporal">Janela Temporal:</label>
                         <select id="selectJanelaTemporal" onchange="atualizarPainelPorFiltro()">
@@ -188,7 +170,7 @@
                     </div>
                 </div>
                 <div class="card-description">
-                    Evolução do total de ocorrências acumuladas na janela temporal selecionada.
+                    Evolução do total de ocorrências na janela temporal selecionada.
                 </div>
                 <div class="chart-container">
                     <canvas id="chartGeral"></canvas>
@@ -201,7 +183,7 @@
                     <h2>Total de Ocorrências por UORG</h2>
                 </div>
                 <div class="card-description">
-                    Distribuição das ocorrências por UORGs na mesma janela temporal. Exibe quais UORGs possuem maior volume de adequação LGPD no SEI.
+                    Consolidado de ocorrências por UORG no período. Exibe o volume total acumulado de cada diretoria/superintendência.
                 </div>
                 <div class="chart-container">
                     <canvas id="chartUorg"></canvas>
@@ -233,6 +215,9 @@
     </footer>
 
     <script>
+        // Registra o plugin de Rótulos de Dados (DataLabels) para o Chart.js
+        Chart.register(ChartDataLabels);
+
         let dadosBase = [];
         let mapaUorg = {};
         let uorgsGlobais = [];
@@ -374,18 +359,13 @@
         function atualizarPainelPorFiltro() {
             const semanasAtivas = obterSemanasFiltradas();
             const dadosFiltrados = dadosBase.filter(d => semanasAtivas.includes(d.Semana));
-            
-            // 1. Badge com Total Consolidado
-            const totalConsolidado = dadosFiltrados.reduce((acc, c) => acc + c.Quantidade, 0);
-            document.getElementById('badgeTotalGeral').textContent = `Total Consolidado: ${totalConsolidado.toLocaleString('pt-BR')}`;
 
-            // 2. Atualiza todos os gráficos
             atualizarGraficoGeral(semanasAtivas, dadosFiltrados);
-            renderizarGraficoUorg(semanasAtivas, dadosFiltrados);
+            renderizarGraficoUorg(dadosFiltrados);
             atualizarGraficoDepto();
         }
 
-        // 1. Gráfico Geral
+        // 1. Gráfico Geral de Linha com Rótulos de Dados sobre cada nó
         function atualizarGraficoGeral(semanasAtivas, dadosFiltrados) {
             const totalPorSemana = semanasAtivas.map(s => {
                 return dadosFiltrados.filter(d => d.Semana === s).reduce((acc, c) => acc + c.Quantidade, 0);
@@ -398,7 +378,7 @@
                 data: {
                     labels: semanasAtivas,
                     datasets: [{
-                        label: 'Evolução do Total de Ocorrências',
+                        label: 'Total de Ocorrências',
                         data: totalPorSemana,
                         borderColor: '#003366',
                         backgroundColor: 'rgba(0, 51, 102, 0.15)',
@@ -412,56 +392,74 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: true, position: 'top' } },
-                    scales: { y: { beginAtZero: true } }
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: {
+                            display: true,
+                            align: 'top',
+                            anchor: 'end',
+                            color: '#003366',
+                            font: { weight: 'bold', size: 12 },
+                            formatter: (value) => value.toLocaleString('pt-BR')
+                        }
+                    },
+                    scales: {
+                        y: { 
+                            beginAtZero: true,
+                            grace: '10%' // Espaço extra no topo para o rótulo não cortar
+                        }
+                    }
                 }
             });
         }
 
-        // 2. Gráfico por UORG em Barras + Legenda na Parte Inferior
-        function renderizarGraficoUorg(semanasAtivas, dadosFiltrados) {
-            const datasetsUorg = uorgsGlobais.map((uorg, idx) => {
-                return {
-                    label: uorg,
-                    data: semanasAtivas.map(s => {
-                        return dadosFiltrados.filter(d => d.Semana === s && d.UORG === uorg)
-                                             .reduce((acc, c) => acc + c.Quantidade, 0);
-                    }),
-                    backgroundColor: paletaCores[idx % paletaCores.length],
-                    borderColor: paletaCores[idx % paletaCores.length],
-                    borderWidth: 1
-                };
+        // 2. Gráfico por UORG: 1 Grupo Consolidado com Rótulo no topo de cada Barra
+        function renderizarGraficoUorg(dadosFiltrados) {
+            // Calcula o total consolidado do período por UORG
+            const totaisUorg = uorgsGlobais.map(uorg => {
+                return dadosFiltrados.filter(d => d.UORG === uorg).reduce((acc, c) => acc + c.Quantidade, 0);
             });
 
             if (chartUorgInstance) chartUorgInstance.destroy();
 
             chartUorgInstance = new Chart(document.getElementById('chartUorg'), {
                 type: 'bar',
-                data: { labels: semanasAtivas, datasets: datasetsUorg },
+                data: {
+                    labels: uorgsGlobais,
+                    datasets: [{
+                        label: 'Total de Ocorrências no Período',
+                        data: totaisUorg,
+                        backgroundColor: uorgsGlobais.map((_, idx) => paletaCores[idx % paletaCores.length]),
+                        borderColor: '#002244',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { 
-                            display: true, 
-                            position: 'bottom',
-                            labels: { boxWidth: 12, padding: 15 },
-                            onClick: (e, legendItem) => {
-                                const uorgNome = legendItem.text;
-                                document.getElementById('selectUorgFiltro').value = uorgNome;
-                                atualizarGraficoDepto();
-                            }
+                        legend: { display: false },
+                        datalabels: {
+                            display: true,
+                            align: 'top',
+                            anchor: 'end',
+                            color: '#2c3e50',
+                            font: { weight: 'bold', size: 12 },
+                            formatter: (value) => value.toLocaleString('pt-BR')
                         }
                     },
                     scales: {
-                        x: { stacked: false },
-                        y: { beginAtZero: true }
+                        y: { 
+                            beginAtZero: true,
+                            grace: '10%'
+                        }
                     }
                 }
             });
         }
 
-        // 3. Gráfico por Departamento (Ordem Crescente)
+        // 3. Gráfico por Departamento (Ordem Crescente) com Rótulos de Dados
         function atualizarGraficoDepto() {
             const uorgSel = document.getElementById('selectUorgFiltro').value;
             const semanasAtivas = obterSemanasFiltradas();
@@ -494,8 +492,23 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: true, position: 'top' } },
-                    scales: { y: { beginAtZero: true } }
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: {
+                            display: true,
+                            align: 'top',
+                            anchor: 'end',
+                            color: '#003366',
+                            font: { weight: 'bold', size: 11 },
+                            formatter: (value) => value.toLocaleString('pt-BR')
+                        }
+                    },
+                    scales: {
+                        y: { 
+                            beginAtZero: true,
+                            grace: '10%'
+                        }
+                    }
                 }
             });
         }
