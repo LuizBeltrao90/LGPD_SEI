@@ -86,11 +86,29 @@
             margin-bottom: 20px;
         }
 
+        .header-title-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
         .card-header h2 {
             margin: 0;
             font-size: 20px;
             color: var(--primary-color);
             font-weight: 600;
+        }
+
+        /* Destaque azul para o Total Consolidado */
+        .total-badge {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0, 51, 102, 0.2);
         }
 
         .card-description {
@@ -157,7 +175,10 @@
             <!-- GRÁFICO 1: EVOLUÇÃO GERAL -->
             <div class="card">
                 <div class="card-header">
-                    <h2>Total Geral de Ocorrências</h2>
+                    <div class="header-title-group">
+                        <h2>Total Geral de Ocorrências</h2>
+                        <span id="badgeTotalGeral" class="total-badge">0</span>
+                    </div>
                     <div class="controls">
                         <label for="selectJanelaTemporal">Janela Temporal:</label>
                         <select id="selectJanelaTemporal" onchange="atualizarPainelPorFiltro()">
@@ -215,7 +236,6 @@
     </footer>
 
     <script>
-        // Registra o plugin de Rótulos de Dados (DataLabels) para o Chart.js
         Chart.register(ChartDataLabels);
 
         let dadosBase = [];
@@ -242,28 +262,28 @@
                     throw new Error("Erro ao carregar arquivos das planilhas.");
                 }
 
-                // 1. Mapeamento de UORGs
+                // 1. Mapeamento de UORGs e Departamentos
                 const arrayUorg = await respUorg.arrayBuffer();
                 const wbUorg = XLSX.read(arrayUorg, { type: 'array' });
                 
                 mapaUorg = {};
-                wbUorg.SheetNames.forEach(sheetName => {
-                    const sheet = wbUorg.Sheets[sheetName];
-                    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-                    rows.forEach((row, idx) => {
-                        if (idx > 0 && row && row.length >= 2) {
-                            const uorgNome = String(row[0] || '').trim();
-                            const deptoNome = String(row[1] || row[3] || '').trim();
-                            const codDept = row[2] !== undefined ? parseInt(row[2]) : null;
-                            
-                            if (deptoNome && uorgNome && uorgNome !== 'UORG') {
-                                mapaUorg[deptoNome.toUpperCase()] = uorgNome;
-                            }
-                            if (codDept !== null && !isNaN(codDept) && uorgNome) {
-                                mapaUorg[codDept] = uorgNome;
+                let sheetTargetName = wbUorg.SheetNames.find(s => s.includes('Departamentos')) || wbUorg.SheetNames[0];
+                const sheetUorg = wbUorg.Sheets[sheetTargetName];
+                const rowsUorg = XLSX.utils.sheet_to_json(sheetUorg, { header: 1 });
+
+                rowsUorg.forEach((row) => {
+                    if (row && row.length >= 2) {
+                        const cell0 = String(row[0] || '').trim().toUpperCase();
+                        const cell1 = String(row[1] || '').trim().toUpperCase();
+                        
+                        if (cell0 !== 'UORG' && cell1 !== 'DEPARTAMENTO' && cell1 !== '') {
+                            const uorgVal = String(row[0] || '').trim();
+                            const deptoVal = String(row[1] || '').trim();
+                            if (uorgVal && deptoVal) {
+                                mapaUorg[deptoVal.toUpperCase()] = uorgVal;
                             }
                         }
-                    });
+                    }
                 });
 
                 // 2. Ocorrências por Semana
@@ -302,14 +322,8 @@
                             if (row && row[colUnidadeIdx] !== undefined) {
                                 const unidade = String(row[colUnidadeIdx] || '').trim();
                                 const qtd = parseInt(row[colQtdIdx]) || 0;
-                                const cod = !isNaN(parseInt(row[0])) ? parseInt(row[0]) : null;
 
-                                let uorg = 'OUTROS';
-                                if (mapaUorg[unidade.toUpperCase()]) {
-                                    uorg = mapaUorg[unidade.toUpperCase()];
-                                } else if (cod !== null && mapaUorg[cod]) {
-                                    uorg = mapaUorg[cod];
-                                }
+                                let uorg = mapaUorg[unidade.toUpperCase()] || 'OUTROS';
 
                                 if (unidade !== '' && !unidade.toLowerCase().includes('total')) {
                                     dadosBase.push({
@@ -360,12 +374,17 @@
             const semanasAtivas = obterSemanasFiltradas();
             const dadosFiltrados = dadosBase.filter(d => semanasAtivas.includes(d.Semana));
 
+            // Atualiza o destaque azul com o número do total geral da janela selecionada
+            const totalGeral = dadosFiltrados.reduce((acc, c) => acc + c.Quantidade, 0);
+            document.getElementById('badgeTotalGeral').textContent = totalGeral.toLocaleString('pt-BR');
+
+            // Atualiza os gráficos
             atualizarGraficoGeral(semanasAtivas, dadosFiltrados);
             renderizarGraficoUorg(dadosFiltrados);
             atualizarGraficoDepto();
         }
 
-        // 1. Gráfico Geral de Linha com Rótulos de Dados sobre cada nó
+        // 1. Gráfico Geral de Linha
         function atualizarGraficoGeral(semanasAtivas, dadosFiltrados) {
             const totalPorSemana = semanasAtivas.map(s => {
                 return dadosFiltrados.filter(d => d.Semana === s).reduce((acc, c) => acc + c.Quantidade, 0);
@@ -406,16 +425,15 @@
                     scales: {
                         y: { 
                             beginAtZero: true,
-                            grace: '10%' // Espaço extra no topo para o rótulo não cortar
+                            grace: '10%'
                         }
                     }
                 }
             });
         }
 
-        // 2. Gráfico por UORG: 1 Grupo Consolidado com Rótulo no topo de cada Barra
+        // 2. Gráfico por UORG Consolidado
         function renderizarGraficoUorg(dadosFiltrados) {
-            // Calcula o total consolidado do período por UORG
             const totaisUorg = uorgsGlobais.map(uorg => {
                 return dadosFiltrados.filter(d => d.UORG === uorg).reduce((acc, c) => acc + c.Quantidade, 0);
             });
@@ -459,7 +477,7 @@
             });
         }
 
-        // 3. Gráfico por Departamento (Ordem Crescente) com Rótulos de Dados
+        // 3. Gráfico por Departamento (Ordem Crescente)
         function atualizarGraficoDepto() {
             const uorgSel = document.getElementById('selectUorgFiltro').value;
             const semanasAtivas = obterSemanasFiltradas();
